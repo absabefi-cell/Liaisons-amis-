@@ -1,0 +1,34 @@
+<!doctype html>
+<html lang="fr"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Liaison amis — test</title>
+<style>body{font:17px system-ui;background:#101829;color:#eef4ff;max-width:650px;margin:35px auto;padding:20px}input,button{font:inherit;padding:12px;box-sizing:border-box;border-radius:10px;border:1px solid #52617a;margin:6px 0}input{width:100%;background:#19263c;color:white}button{background:#8ff0ce;color:#102522;cursor:pointer}button:disabled{opacity:.5}#log{white-space:pre-wrap;overflow-wrap:anywhere;background:#19263c;padding:15px;min-height:130px}label{display:block;margin-top:12px}</style>
+<h1>Liaison amis</h1><p>Test de connexion par serveur · messages en direct</p>
+<label>Adresse du Worker Cloudflare<input id="server" placeholder="https://liaison-amis.toncompte.workers.dev"></label>
+<label>Code du salon<input id="room" maxlength="100"></label>
+<button id="newRoom">Nouveau salon</button> <button id="join">Rejoindre</button> <button id="leave" disabled>Quitter</button>
+<p id="status" role="status">Déconnecté</p><p>Partage la même adresse du serveur et le même code avec ton ami.</p>
+<div id="log" role="log" aria-live="polite"></div>
+<form id="form"><input id="message" placeholder="Ton message" maxlength="2000" aria-label="Message"><button id="send" disabled>Envoyer</button></form>
+<p>Garde cette page ouverte. Ce test ne comprend pas encore les appels ni les jeux.</p>
+<script>
+const el=id=>document.getElementById(id); let socket;
+const log=text=>{const p=document.createElement('p');p.textContent=text;el('log').append(p);while(el('log').children.length>100)el('log').firstChild.remove();};
+function fresh(){el('room').value=crypto.randomUUID().replaceAll('-','');}
+fresh();el('newRoom').onclick=fresh;
+function state(on){el('send').disabled=!on;el('leave').disabled=!on;el('join').disabled=on;el('newRoom').disabled=on;el('server').disabled=on;el('room').disabled=on;}
+el('join').onclick=()=>{
+  try{
+    const u=new URL(el('server').value.trim());
+    if(u.protocol!=='https:')throw Error('Utilise une adresse https://');
+    const room=el('room').value.trim();if(!/^[a-zA-Z0-9_-]{16,100}$/.test(room))throw Error('Code de salon : 16 à 100 lettres, chiffres, _ ou -.');
+    u.protocol='wss:';u.pathname='/connect';u.search='';u.hash='';u.searchParams.set('app','test-v1');u.searchParams.set('room',room);
+    el('join').disabled=true;el('status').textContent='Connexion…';socket=new WebSocket(u);
+    socket.onopen=()=>{state(true);el('status').textContent='Connecté';};
+    socket.onmessage=e=>{try{const m=JSON.parse(e.data);if(m.type==='peers')el('status').textContent='Connecté · '+m.peers.length+' personne(s) dans le salon';if(m.type==='data'&&typeof m.payload?.text==='string')log('Ami : '+m.payload.text);}catch{}};
+    socket.onerror=()=>{el('status').textContent='Connexion impossible : vérifie le Worker et Internet.';};
+    socket.onclose=()=>{state(false);el('status').textContent='Déconnecté — appuie sur Rejoindre pour réessayer.';};
+  }catch(e){el('status').textContent=e.message;el('join').disabled=false;}
+};
+el('leave').onclick=()=>socket?.close();
+el('form').onsubmit=e=>{e.preventDefault();const text=el('message').value.trim();if(!text||socket?.readyState!==1)return;socket.send(JSON.stringify({type:'data',payload:{text}}));log('Moi : '+text);el('message').value='';};
+</script></html>
